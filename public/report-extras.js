@@ -1,0 +1,31 @@
+const equipmentPresets=[
+ ['01-001','TSI','9535-A','9535A2606008','2/9/2027'],
+ ['01-002','Shortridge','ADM-870C','M12339','6/24/2027'],
+ ['01-003','Tec Services','PH-4','1614','4/24/2027'],
+ ['01-004','Ashcroft','20W1001TH','448','8/20/2027']
+];
+function reportEquipment(r){return (r.equipment||[]).map(a=>Array.from({length:6},(_,i)=>a[i]||''));}
+function signatureData(value){return typeof value==='string'&&/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value)&&value.length<=350000?value:null;}
+async function importSignature(file){
+ if(!file||!['image/png','image/jpeg','image/webp'].includes(file.type))throw Error('Select a PNG, JPEG, or WebP signature image.');
+ if(file.size>10*1024*1024)throw Error('Choose an image smaller than 10 MB.');
+ const url=URL.createObjectURL(file);
+ try{const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=()=>reject(Error('This image could not be opened. Try PNG or JPEG.'));i.src=url;});
+ if(!img.width||img.width*img.height>25000000)throw Error('Choose a smaller signature image.');
+ const scale=Math.min(1,1600/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);let left=canvas.width,right=-1,top=canvas.height,bottom=-1;
+ for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++){let i=(y*canvas.width+x)*4;let ink=pixels.data[i+3]>30&&(pixels.data[i]*.299+pixels.data[i+1]*.587+pixels.data[i+2]*.114)<195;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=0;pixels.data[i+3]=ink?255:0;if(ink){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}}
+ if(right<left)throw Error('No dark signature was found. Use dark ink on a light background.');
+ ctx.putImageData(pixels,0,0);const w=right-left+1,h=bottom-top+1,factor=Math.min(1,1000/w,300/h),out=document.createElement('canvas');out.width=Math.ceil(w*factor)+16;out.height=Math.ceil(h*factor)+16;out.getContext('2d').drawImage(canvas,left,top,w,h,8,8,w*factor,h*factor);let result=out.toDataURL('image/png');if(!signatureData(result))throw Error('Signature is too large. Use a smaller, cleaner image.');return result;
+ }finally{URL.revokeObjectURL(url);}
+}
+const beforeExtrasRender=render;
+render=function(){beforeExtrasRender();if(tab!==3)return;const r=report();r.equipment=reportEquipment(r);const target=$('#editor .entry-table');if(target){target.innerHTML=`<tr>${['Equipment ID / preset','Manufacturer','Model','S/N','Calibration due','Used (Y/N)'].map(n=>`<th>${n}</th>`).join('')}</tr>${r.equipment.map((a,i)=>{const known=equipmentPresets.some(p=>p[0]===a[0]);return `<tr><td><select data-equipment-preset="${i}" aria-label="Equipment ${i+1} preset"><option value="">${a[0]&&!known?'Custom: '+esc(a[0]):'Choose equipment'}</option>${equipmentPresets.map(p=>`<option value="${p[0]}" ${a[0]===p[0]?'selected':''}>${p[0]} · ${esc(p[1])} ${esc(p[2])}</option>`).join('')}</select><input data-equipment-row="${i}" data-equipment-cell="0" aria-label="Equipment ${i+1} ID" value="${esc(a[0])}" placeholder="Or enter equipment ID"></td>${[1,2,3,4].map(j=>`<td><input data-equipment-row="${i}" data-equipment-cell="${j}" aria-label="Equipment ${i+1} ${['ID','manufacturer','model','serial number','calibration due'][j]}" value="${esc(a[j])}"></td>`).join('')}<td><select data-equipment-row="${i}" data-equipment-cell="5" aria-label="Equipment ${i+1} used"><option value="" ${!a[5]?'selected':''}>Select</option>${['Y','N'].map(v=>`<option ${a[5]===v?'selected':''}>${v}</option>`).join('')}</select></td></tr>`;}).join('')}`;
+ target.querySelectorAll('[data-equipment-preset]').forEach(el=>el.onchange=()=>{const i=+el.dataset.equipmentPreset,p=equipmentPresets.find(p=>p[0]===el.value);if(p){r.equipment[i]=[...p,r.equipment[i][5]||''];save();render();}});
+ target.querySelectorAll('[data-equipment-row]').forEach(el=>el.oninput=()=>{r.equipment[+el.dataset.equipmentRow][+el.dataset.equipmentCell]=el.value;save();});}
+ const section=document.createElement('section');section.id='signatureSection';section.innerHTML=`<h2>Signature image</h2><p class="hint">Upload your signature in dark ink on a light background. It will be saved with this report and placed in the PDF’s signature area.</p><label>Import signature image<input id="signatureUpload" type="file" accept="image/png,image/jpeg,image/webp"></label>${signatureData(r.signatureImage)?`<div class="signature-preview"><img src="${r.signatureImage}" alt="Signature to include in this report"></div><button id="removeSignature">Remove signature</button>`:'<p class="hint" style="margin-top:12px">No signature image attached.</p>'}<p id="signatureMessage" role="status"></p>`;$('#editor').append(section);
+ $('#signatureUpload').onchange=async e=>{const file=e.target.files[0];if(!file)return;e.target.disabled=true;try{r.signatureImage=await importSignature(file);save();render();toast('Signature attached to this report.');}catch(err){$('#signatureMessage').textContent=err.message;e.target.disabled=false;e.target.value='';}};
+ if($('#removeSignature'))$('#removeSignature').onclick=()=>{delete r.signatureImage;save();render();};
+};
+const beforeExtrasPrint=printReport;
+printReport=function(){beforeExtrasPrint();if(!document.body.classList.contains('previewing'))return;const r=report();const equipment=document.querySelector('#paper .sheet:nth-child(2) table');if(equipment)equipment.innerHTML=`<tr>${['Equipment ID','Manufacturer','Model','S/N','Calibration due','Used (Y/N)'].map(n=>`<th>${n}</th>`).join('')}</tr>${reportEquipment(r).map(a=>`<tr>${a.map(v=>`<td>${esc(v||'—')}</td>`).join('')}</tr>`).join('')}`;const signature=signatureData(r.signatureImage);if(signature){const line=Array.from(document.querySelectorAll('#paper .sheet:nth-child(2)>p')).find(p=>p.textContent.startsWith('Signature:'));if(line)line.innerHTML=`<b>Signature:</b><br><img class="report-signature" src="${signature}" alt="Certifier signature">`;}};
+$('#print').onclick=()=>printReport();render();

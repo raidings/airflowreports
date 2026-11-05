@@ -36,7 +36,7 @@ async function buildReportPdf(r,c){
  heading('Exhaust HEPA'+(r.exhaustHepaType&&r.exhaustHepaType!=='Select method'?' - '+r.exhaustHepaType:''));
  table(['Exhaust','Min','Max','Measured','Result'],hepaLabels.map((n,i)=>row(n,i+20)),cols);
  newPage();title();heading('Test equipment');
- table(['Equipment ID','Manufacturer','Model','Serial number','Calibration due'],r.equipment.map(a=>a.map(v)),[80,120,110,130,100]);
+ table(['Equipment ID','Manufacturer','Model','Serial number','Calibration due','Used (Y/N)'],reportEquipment(r).map(a=>a.map(v)),[65,100,90,125,100,60]);
  if(r.instruments)paragraph('Additional instruments / calibration',r.instruments);
  heading('Inflow');table(['Method / units','Workface','Area (ft^2)','Volume (CFM)','Velocity (FPM)'],[[r.inMethod,`${v(r.width)} x ${v(r.sash)} in`,fmt(c.area,3),fmt(c.cfm),fmt(c.fpm)]],[120,130,85,100,105]);
  paragraph('Inflow limits (FPM)',`${v(r.inMin)} - ${v(r.inMax)}`);paragraph('Inflow readings',r.inReadings);
@@ -45,7 +45,7 @@ async function buildReportPdf(r,c){
  heading('Site assessment');table(['Check','Result / observation'],['Sash Alarm','Exhaust Alarm','Exhaust System Interlock','Supply Alarm'].map((n,i)=>[n,v(r['site'+i])]),[220,320]);
  paragraph('Comments / conditions',r.notes);paragraph('Corrective actions / limitations',r.corrective);
  if(r.challengeEnabled==='Yes'){let a=challengeValues(r);paragraph('Calculated aerosol challenge',`(13,500 x ${r.nozzles}) / ${fmt(a.q,2)} CFM = ${fmt(a.value,2)} ug/L. Q source: ${r.challengeQMode}. Calculated, not a measured upstream concentration.`);}
- need(130);heading('Signature and approval');paragraph('','I certify that this record is a true and accurate representation of the work performed.');table(null,[['Performed by: '+v(r.tech),'Date certified: '+v(r.date)],['Certification due: '+v(r.due),'Determination: '+v(r.decision)]],[270,270]);paragraph('Signature','____________________________________');
+ need(signatureData(r.signatureImage)?170:130);heading('Signature and approval');paragraph('','I certify that this record is a true and accurate representation of the work performed.');table(null,[['Performed by: '+v(r.tech),'Date certified: '+v(r.date)],['Certification due: '+v(r.due),'Determination: '+v(r.decision)]],[270,270]);if(signatureData(r.signatureImage)){const image=await doc.embedPng(r.signatureImage);const scale=Math.min(230/image.width,45/image.height);need(90);text('Signature:',M,y,9,true);y-=18;page.drawImage(image,{x:M,y:y-image.height*scale,width:image.width*scale,height:image.height*scale});y-=image.height*scale+8;}else paragraph('Signature','____________________________________');
  let pages=doc.getPages();for(let i=0;i<pages.length;i++){let pg=pages[i];pg.drawText(pdfSafe('Report: '+v(r.reportNo)),{x:M,y:22,size:8,font});let label=`Page ${i+1} of ${pages.length}`;pg.drawText(label,{x:W-M-font.widthOfTextAtSize(label,8),y:22,size:8,font});}
  doc.setTitle('BSC Certification Report');doc.setSubject('Cabinet certification test results');doc.setProducer('BSC Report Builder');
  return await doc.save();
