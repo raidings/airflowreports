@@ -1,0 +1,8 @@
+const test=require('node:test');const assert=require('node:assert/strict');const handler=require('../api/config');
+function call(env={},method='GET'){let old={...process.env};delete process.env.SUPABASE_URL;delete process.env.SUPABASE_ANON_KEY;delete process.env.SUPABASE_PUBLISHABLE_KEY;Object.assign(process.env,env);let result,code,headers={};try{handler({method},{setHeader:(k,v)=>headers[k]=v,status(n){code=n;return this},json(x){result=x;return this}});return {result,code,headers};}finally{process.env=old;}}
+test('unconfigured deployment stays local-only',()=>assert.deepEqual(call().result,{enabled:false}));
+test('only public browser configuration is exposed',()=>{let x=call({SUPABASE_URL:'https://example.supabase.co/',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_example',SUPABASE_SERVICE_ROLE_KEY:'do-not-expose'});assert.equal(x.result.url,'https://example.supabase.co');assert.equal(x.result.enabled,true);assert.ok(!JSON.stringify(x).includes('do-not-expose'));assert.equal(x.headers['Cache-Control'],'no-store');});
+test('reject secret key in public-key slot',()=>assert.equal(call({SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'sb_secret_example'}).result.enabled,false));
+test('reject service-role JWT',()=>{let jwt='x.'+Buffer.from(JSON.stringify({role:'service_role'})).toString('base64url')+'.y';assert.equal(call({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:jwt}).result.enabled,false);});
+test('reject non-HTTPS endpoint',()=>assert.equal(call({SUPABASE_URL:'http://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_example'}).result.enabled,false));
+test('config is read-only',()=>assert.equal(call({},'POST').code,405));
