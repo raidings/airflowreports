@@ -91,4 +91,28 @@ render=function(){beforeHepaRender();if(tab===2){let r=report();let panel=docume
 const beforeHepaPrint=printReport;
 printReport=function(){ensureReference();beforeHepaPrint();let r=report();for(let th of document.querySelectorAll('#paper .results .band th:first-child')){if(th.textContent==='Supply'&&r.supplyHepaType&&r.supplyHepaType!=='Select method')th.textContent='Supply — '+r.supplyHepaType;if(th.textContent==='Exhaust'&&r.exhaustHepaType&&r.exhaustHepaType!=='Select method')th.textContent='Exhaust — '+r.exhaustHepaType;}};
 $('#print').onclick=()=>printReport();render();
-</script><style>@media print{#paper table,#paper .print-grid{break-inside:avoid;page-break-inside:avoid}#paper tr{break-inside:avoid;page-break-inside:avoid}#paper h2{break-after:avoid;page-break-after:avoid}#paper thead{display:table-header-group}}</style><script src="vendor/pdf-lib.min.js"></script><script src="pdf-export.js"></script><style>#cloudPanel{margin:22px 0;padding:20px}#cloudPanel h2{font-size:17px}#cloudPanel .hint{margin:6px 0 12px}#cloudLogin button{margin-top:16px}.cloud-actions{display:flex;gap:8px;flex-wrap:wrap}@media print{#cloudPanel{display:none!important}}</style><style>.signature-preview{background:white;border:1px solid #c5d0da;padding:18px;margin:16px 0;max-width:400px}.signature-preview img,.report-signature{max-width:260px;max-height:75px;object-fit:contain}.entry-table td:first-child select{min-width:250px}.report-signature{display:block;object-position:left center;margin-top:8px}</style><script src="report-extras.js"></script><script src="cloud.js"></script></body></html>
+</script><style>@media print{#paper table,#paper .print-grid{break-inside:avoid;page-break-inside:avoid}#paper tr{break-inside:avoid;page-break-inside:avoid}#paper h2{break-after:avoid;page-break-after:avoid}#paper thead{display:table-header-group}}</style><script src="vendor/pdf-lib.min.js"></script><script src="pdf-export.js"></script><style>#cloudPanel{margin:22px 0;padding:20px}#cloudPanel h2{font-size:17px}#cloudPanel .hint{margin:6px 0 12px}#cloudLogin button{margin-top:16px}.cloud-actions{display:flex;gap:8px;flex-wrap:wrap}@media print{#cloudPanel{display:none!important}}</style><style>.signature-preview{background:white;border:1px solid #c5d0da;padding:18px;margin:16px 0;max-width:400px}.signature-preview img,.report-signature{max-width:260px;max-height:75px;object-fit:contain}.entry-table td:first-child select{min-width:250px}.report-signature{display:block;object-position:left center;margin-top:8px}</style><script src="report-extras.js"></script><script>function constrictedAccessValues(r){
+ const raw=String(r.caReadings||'').trim();
+ const parts=raw?raw.split(/[\s,;]+/).filter(Boolean):[];
+ const readings=parts.map(Number);
+ const width=Number(r.caWidth),height=Number(r.caHeight??3),operating=Number(r.caOperating),factor=Number(r.caFactor??1);
+ const valid=readings.length>0&&readings.every(v=>Number.isFinite(v)&&v>=0)&&[width,height,operating,factor].every(v=>Number.isFinite(v)&&v>0)&&height<=operating;
+ if(!valid)return null;
+ const average=readings.reduce((a,b)=>a+b,0)/readings.length;
+ const volume=average*width*height/144*factor;
+ return {count:readings.length,average,min:Math.min(...readings),max:Math.max(...readings),volume,inflow:volume/(width*operating/144),factor};
+}
+const beforeConstrictedRender=render;
+render=function(){
+ beforeConstrictedRender();
+ const button=document.createElement('button');button.textContent='Constricted access';button.dataset.tab='4';button.className=tab===4?'active':'';button.onclick=()=>{tab=4;render()};$('#tabs').append(button);
+ if(tab!==4)return;
+ const r=report();
+ for(const [k,v] of Object.entries({caWidth:r.width,caHeight:3,caOperating:r.sash,caFactor:1}))if(r[k]===undefined)r[k]=v;
+ const input=(label,k,value,type='number')=>`<label>${label}<input data-ca="${k}" type="${type}" ${type==='number'?'min="0" step="any"':''} value="${esc(value??'')}"></label>`;
+ $('#editor').innerHTML=`<section><h2>Constricted access calculator</h2><p class="hint">Enter thermal anemometer readings at the reduced opening. Calculator inputs are saved with this report.</p><div class="grid">${input('Opening width (in)','caWidth',r.caWidth??r.width)}${input('Constricted opening height (in)','caHeight',r.caHeight??3)}${input('Operating sash height (in)','caOperating',r.caOperating??r.sash)}${input('Manufacturer correction multiplier','caFactor',r.caFactor??1)}${input('Procedure / correction reference','caReference',r.caReference,'text')}</div><label>Constricted readings (FPM)<textarea data-ca="caReadings" placeholder="Paste readings separated by spaces, commas, or new lines">${esc(r.caReadings||'')}</textarea></label><div class="summary" id="caResults" aria-live="polite"></div><p class="note">Volume = average × width × constricted height ÷ 144 × multiplier. Operating inflow = volume ÷ operating opening area. A multiplier of 1 is an uncorrected area-ratio estimate. Use the cabinet manufacturer’s procedure to determine whether this conversion applies and enter its multiplier when required.</p></section>`;
+ const update=()=>{const v=constrictedAccessValues(r);$('#caResults').innerHTML=v?`<div><strong>${fmt(v.average)} FPM</strong><span>Average · ${v.count} readings</span></div><div><strong>${fmt(v.min)} / ${fmt(v.max)}</strong><span>Minimum / maximum FPM</span></div><div><strong>${fmt(v.volume)} CFM</strong><span>Calculated volume</span></div><div><strong>${fmt(v.inflow)} FPM</strong><span>${v.factor===1?'Estimated operating inflow':'Operating inflow with entered multiplier'}</span></div>`:'<p>Enter positive dimensions and multiplier, and valid nonnegative readings. Constricted height must not exceed operating height.</p>'};
+ $('#editor').querySelectorAll('[data-ca]').forEach(el=>el.oninput=()=>{r[el.dataset.ca]=el.value;save();update()});update();
+};
+render();
+</script><script src="cloud.js"></script></body></html>
