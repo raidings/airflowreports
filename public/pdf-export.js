@@ -38,6 +38,7 @@ async function buildReportPdf(r,c){
  newPage();title();heading('Test equipment');
  table(['Equipment ID','Manufacturer','Model','Serial number','Calibration due','Used (Y/N)'],reportEquipment(r).map(a=>a.map(v)),[65,100,90,125,100,60]);
  if(r.instruments)paragraph('Additional instruments / calibration',r.instruments);
+ if(r.type==='Class II Type B2'){heading('B2 total cabinet exhaust');table(['Observed exhaust (CFM)','Minimum (CFM)','Maximum (CFM)','Comparison'],[[v(r.b2Exhaust),v(r.b2ExhaustMin),v(r.b2ExhaustMax),b2ExhaustStatus(r)]],[150,100,100,190]);paragraph('Exhaust measurement method',r.b2ExhaustMethod);paragraph('Exhaust readings / observations',r.b2ExhaustNotes);}
  heading('Inflow');table(['Method / units','Workface','Area (ft^2)','Volume (CFM)','Velocity (FPM)'],[[r.inMethod,`${v(r.width)} x ${v(r.sash)} in`,fmt(c.area,3),fmt(c.cfm),fmt(c.fpm)]],[120,130,85,100,105]);
  paragraph('Inflow limits (FPM)',`${v(r.inMin)} - ${v(r.inMax)}`);paragraph('Inflow readings',r.inReadings);
  heading('Supply airflow');table(['Dimensions','Area (ft^2)','Average (FPM)','Volume (CFM)'],[[`${v(r.dfWidth)} x ${v(r.dfDepth)} in`,fmt(c.dfArea,3),fmt(c.d.avg),fmt(c.dfArea&&c.d.avg!==null?c.dfArea*c.d.avg:null)]],[160,110,135,135]);
