@@ -71,11 +71,12 @@ render();
 function challengeValues(r){
  let c=calc(r),n=Number(r.nozzles),manual=r.challengeQMode==='Manual Q';
  let q=manual?(r.challengeQ===''||r.challengeQ===undefined?null:Number(r.challengeQ)):(c.cfm!==null&&c.dfArea!==null&&c.d.avg!==null?c.cfm+c.dfArea*c.d.avg:null);
+ if(r.challengeQMode==='Observed total exhaust (B2)')q=r.type==='Class II Type B2'&&r.b2Exhaust!==''&&r.b2Exhaust!==undefined?Number(r.b2Exhaust):null;
  let valid=r.nozzles!==''&&r.nozzles!==undefined&&Number.isFinite(n)&&n>0&&Number.isFinite(q)&&q>0;
  return {n,q,value:valid?13500*n/q:null,manual};
 }
 function syncChallenge(r){let c=challengeValues(r);if(r.challengeEnabled==='Yes'&&r.refRows){r.refRows[19].measured=c.value===null?'':fmt(c.value,2);r.refRows[23].measured=c.value===null?'':fmt(c.value,2);}return c;}
-function challengeMarkup(){let r=report(),c=challengeValues(r);return `<section id="challengeSection"><h2>Calculated aerosol challenge</h2><p class="hint">Challenge (µg/L) = (13,500 × nozzle amount) ÷ Q (CFM). Fractional nozzles such as 1.5 are supported.</p><div class="grid">${select('Use calculated challenge in report','challengeEnabled',['No','Yes'])}${field('Nozzle amount','nozzles','number')}${select('Q source','challengeQMode',['Inflow + supply volume','Manual Q'])}${r.challengeQMode==='Manual Q'?field('Q — total airflow (CFM)','challengeQ','number'):''}</div><p class="hint" style="margin-top:16px">Automatic Q = inflow CFM + (downflow average FPM × downflow area ft²). Use Manual Q when your test procedure calls for a different airflow.</p><div class="summary"><div><strong id="challengeQValue">${fmt(c.q,2)} CFM</strong><span>Q used</span></div><div><strong id="challengeValue">${fmt(c.value,2)} µg/L</strong><span>Calculated challenge</span></div></div><p id="challengeStatus" class="hint">${c.value===null?'Enter a positive nozzle amount and Q. Automatic Q also needs inflow readings, downflow readings, and both opening dimensions.':r.challengeEnabled==='Yes'?'Calculated value autofills both Supply and Exhaust aerosol concentration fields.':'Calculation preview only. Select Yes to use this value in the report.'}</p></section>`;}
+function challengeMarkup(){let r=report(),c=challengeValues(r);return `<section id="challengeSection"><h2>Calculated aerosol challenge</h2><p class="hint">Challenge (µg/L) = (13,500 × nozzle amount) ÷ Q (CFM). Fractional nozzles such as 1.5 are supported.</p><div class="grid">${select('Use calculated challenge in report','challengeEnabled',['No','Yes'])}${field('Nozzle amount','nozzles','number')}${select('Q source','challengeQMode',['Inflow + supply volume','Manual Q',...(r.type==='Class II Type B2'?['Observed total exhaust (B2)']:[])])}${r.challengeQMode==='Manual Q'?field('Q — total airflow (CFM)','challengeQ','number'):''}</div><p class="hint" style="margin-top:16px">Automatic Q = inflow CFM + (downflow average FPM × downflow area ft²). B2 cabinets can select observed total exhaust as Q. Use Manual Q when your test procedure calls for a different airflow.</p><div class="summary"><div><strong id="challengeQValue">${fmt(c.q,2)} CFM</strong><span>Q used</span></div><div><strong id="challengeValue">${fmt(c.value,2)} µg/L</strong><span>Calculated challenge</span></div></div><p id="challengeStatus" class="hint">${c.value===null?'Enter a positive nozzle amount and Q. Automatic Q also needs inflow readings, downflow readings, and both opening dimensions.':r.challengeEnabled==='Yes'?'Calculated value autofills both Supply and Exhaust aerosol concentration fields.':'Calculation preview only. Select Yes to use this value in the report.'}</p></section>`;}
 const beforeChallengeRender=render;
 render=function(){let r=report();if(!r.challengeQMode)r.challengeQMode='Inflow + supply volume';if(!r.challengeEnabled)r.challengeEnabled='No';ensureReference();syncChallenge(r);beforeChallengeRender();if(tab===1||tab===2){$('#editor').insertAdjacentHTML('beforeend',challengeMarkup());$('#challengeSection').querySelectorAll('[data-k]').forEach(el=>el.oninput=()=>{r[el.dataset.k]=el.value;syncChallenge(r);save();if(el.tagName==='SELECT'){render();return}let c=challengeValues(r);$('#challengeQValue').textContent=fmt(c.q,2)+' CFM';$('#challengeValue').textContent=fmt(c.value,2)+' µg/L';$('#challengeStatus').textContent=c.value===null?'Enter a positive nozzle amount and Q.':r.challengeEnabled==='Yes'?'Calculated value is saved to the report.':'Calculation preview only.';if(tab===2&&r.challengeEnabled==='Yes'){for(let i of [19,23]){let input=document.querySelector('[data-ref="'+i+'"][data-col="measured"]');if(input)input.value=r.refRows[i].measured;}}});if(tab===1){$('#editor section').querySelectorAll('[data-k]').forEach(el=>{let prior=el.oninput;el.oninput=()=>{prior();syncChallenge(r);save();let c=challengeValues(r);$('#challengeQValue').textContent=fmt(c.q,2)+' CFM';$('#challengeValue').textContent=fmt(c.value,2)+' µg/L';}})}}};
 const beforeChallengePrint=printReport;
@@ -115,4 +116,29 @@ render=function(){
  $('#editor').querySelectorAll('[data-ca]').forEach(el=>el.oninput=()=>{r[el.dataset.ca]=el.value;save();update()});update();
 };
 render();
+</script><script>function b2ExhaustStatus(r){
+ const value=k=>r[k]!==''&&r[k]!==undefined&&Number.isFinite(Number(r[k]))&&Number(r[k])>=0?Number(r[k]):null;
+ const observed=value('b2Exhaust'),min=value('b2ExhaustMin'),max=value('b2ExhaustMax');
+ if(observed===null)return 'Not recorded';
+ if(min===null||max===null)return 'Limits not set';
+ if(min>max)return 'Invalid limits';
+ return observed>=min&&observed<=max?'Within entered limits':'Outside entered limits';
+}
+const beforeB2Render=render;
+render=function(){beforeB2Render();const r=report();if(tab!==1||r.type!=='Class II Type B2')return;
+ const section=document.createElement('section');section.id='b2ExhaustSection';section.innerHTML=`<h2>B2 total cabinet exhaust</h2><p class="hint">Record observed total exhaust separately from the cabinet inflow and downflow. Enter the manufacturer’s exhaust limits for this cabinet.</p><div class="grid">${field('Total cabinet exhaust observed (CFM)','b2Exhaust','number')}${field('Exhaust minimum (CFM)','b2ExhaustMin','number')}${field('Exhaust maximum (CFM)','b2ExhaustMax','number')}${field('Exhaust measurement method','b2ExhaustMethod')}${field('Exhaust readings / observations','b2ExhaustNotes','textarea',true)}</div><p id="b2ExhaustStatus" class="note"></p>`;
+ const challenge=$('#challengeSection');if(challenge)challenge.before(section);else $('#editor').append(section);
+ const update=()=>{$('#b2ExhaustStatus').textContent=b2ExhaustStatus(r);syncChallenge(r);const c=challengeValues(r);if($('#challengeQValue'))$('#challengeQValue').textContent=fmt(c.q,2)+' CFM';if($('#challengeValue'))$('#challengeValue').textContent=fmt(c.value,2)+' µg/L';};
+ section.querySelectorAll('[data-k]').forEach(el=>{if(el.type==='number'){el.min='0';el.step='any';}el.oninput=()=>{r[el.dataset.k]=el.value;update();save();}});update();
+};
+const beforeB2Print=printReport;
+printReport=function(){const r=report();if(r.type==='Class II Type B2'){
+ for(const k of ['b2Exhaust','b2ExhaustMin','b2ExhaustMax'])if(r[k]!==undefined&&r[k]!==''&&(!Number.isFinite(Number(r[k]))||Number(r[k])<0)){toast('Exhaust values must be nonnegative numbers.');return;}
+ if(b2ExhaustStatus(r)==='Invalid limits'){toast('Review the B2 exhaust minimum and maximum.');return;}
+ if(r.decision==='Pass'&&b2ExhaustStatus(r)==='Outside entered limits'){toast('Pass conflicts with the B2 exhaust limits. Review the report.');return;}
+ }beforeB2Print();if(r.type!=='Class II Type B2')return;
+ const target=[...document.querySelectorAll('#paper h2')].find(el=>el.textContent==='Inflow');if(!target)return;
+ target.insertAdjacentHTML('beforebegin',`<h2>B2 total cabinet exhaust</h2><table><tr><th>Total cabinet exhaust observed (CFM)</th><th>Minimum (CFM)</th><th>Maximum (CFM)</th><th>Comparison</th></tr><tr>${[r.b2Exhaust,r.b2ExhaustMin,r.b2ExhaustMax,b2ExhaustStatus(r)].map(v=>`<td>${esc(v===undefined||v===''?'—':v)}</td>`).join('')}</tr></table><p><b>Method:</b> ${esc(r.b2ExhaustMethod||'—')}</p><p class="print-note"><b>Exhaust readings / observations:</b> ${esc(r.b2ExhaustNotes||'—')}</p>`);
+};
+$('#print').onclick=()=>printReport();render();
 </script><script src="cloud.js"></script></body></html>
