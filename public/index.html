@@ -205,4 +205,4 @@ printReport=function(){beforeNaPrint();const r=report();const rows=[...document.
  for(const [na,label] of [[r.inMethod==='N/A','Inflow'],[r.dfApplicable==='N/A','Supply (FPM)']])if(na){const h=[...document.querySelectorAll('#paper h2')].find(el=>el.textContent===label);if(h){let el=h.nextElementSibling;while(el&&el.tagName!=='H2'){const next=el.nextElementSibling;el.remove();el=next;}h.insertAdjacentHTML('afterend','<p>N/A — Not applicable</p>');}}
 };
 $('#print').onclick=()=>printReport();render();
-</script><script src="cloud.js"></script></body></html>
+</script><script src="fume-hoods.js"></script><script src="cloud.js"></script></body></html>
