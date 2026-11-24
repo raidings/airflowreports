@@ -29,7 +29,8 @@ async function buildReportPdf(r,c){
  table(null,[['Facility: '+v(r.client),'Equipment ID: '+v(r.asset)],['Address: '+v(r.address),'Make: '+v(r.manufacturer)],['Contact: '+v(r.contact),'Model: '+v(r.model)],['Phone: '+v(r.phone),'Serial number: '+v(r.serial)],['Building / room: '+v([r.building,r.room].filter(Boolean).join(' / ')),'Class / type: '+v(r.type)]],[270,270]);
  paragraph('Test standard / procedure',r.standard);
  const cols=[266,51,51,89,83],header=['Inspected','Min','Max','Measured','Result'];
- const row=(label,i)=>[label,v(r.refRows[i].min),v(r.refRows[i].max),v(r.refRows[i].measured),v(r.refRows[i].result)];
+ const referenceRows=typeof notApplicableRows==='function'?notApplicableRows(r):r.refRows;
+ const row=(label,i)=>[label,v(referenceRows[i].min),v(referenceRows[i].max),v(referenceRows[i].measured),v(referenceRows[i].result)];
  table(header,inspectionLabels.map((n,i)=>row(n,i)),cols);
  heading('Supply HEPA'+(r.supplyHepaType&&r.supplyHepaType!=='Select method'?' - '+r.supplyHepaType:''));
  table(['Supply','Min','Max','Measured','Result'],hepaLabels.map((n,i)=>row(n,i+16)),cols);
@@ -39,10 +40,10 @@ async function buildReportPdf(r,c){
  table(['Equipment ID','Manufacturer','Model','Serial number','Calibration due','Used (Y/N)'],reportEquipment(r).map(a=>a.map(v)),[65,100,90,125,100,60]);
  if(r.instruments)paragraph('Additional instruments / calibration',r.instruments);
  if(r.type==='Class II Type B2'){heading('B2 total cabinet exhaust');table(['Observed exhaust (CFM)','Minimum (CFM)','Maximum (CFM)','Comparison'],[[v(r.b2Exhaust),v(r.b2ExhaustMin),v(r.b2ExhaustMax),b2ExhaustStatus(r)]],[150,100,100,190]);paragraph('Exhaust measurement method',r.b2ExhaustMethod);paragraph('Exhaust readings / observations',r.b2ExhaustNotes);}
- heading('Inflow');table(['Method / units','Workface','Area (ft^2)','Volume (CFM)','Velocity (FPM)'],[[r.inMethod,`${v(r.width)} x ${v(r.sash)} in`,fmt(c.area,3),fmt(c.cfm),fmt(c.fpm)]],[120,130,85,100,105]);
- paragraph('Inflow limits (FPM)',`${v(r.inMin)} - ${v(r.inMax)}`);paragraph('Inflow readings',r.inReadings);
- heading('Supply airflow');table(['Dimensions','Area (ft^2)','Average (FPM)','Volume (CFM)'],[[`${v(r.dfWidth)} x ${v(r.dfDepth)} in`,fmt(c.dfArea,3),fmt(c.d.avg),fmt(c.dfArea&&c.d.avg!==null?c.dfArea*c.d.avg:null)]],[160,110,135,135]);
- paragraph('Supply limits (FPM)',`${v(r.dfMin)} - ${v(r.dfMax)}`);paragraph('Supply readings (FPM)',r.dfReadings);
+ if(r.inMethod==='N/A'){heading('Inflow');paragraph('','N/A - Not applicable');}else {heading('Inflow');table(['Method / units','Workface','Area (ft^2)','Volume (CFM)','Velocity (FPM)'],[[r.inMethod,`${v(r.width)} x ${v(r.sash)} in`,fmt(c.area,3),fmt(c.cfm),fmt(c.fpm)]],[120,130,85,100,105]);
+ paragraph('Inflow limits (FPM)',`${v(r.inMin)} - ${v(r.inMax)}`);paragraph('Inflow readings',r.inReadings);}
+ if(r.dfApplicable==='N/A'){heading('Supply airflow');paragraph('','N/A - Not applicable');}else {heading('Supply airflow');table(['Dimensions','Area (ft^2)','Average (FPM)','Volume (CFM)'],[[`${v(r.dfWidth)} x ${v(r.dfDepth)} in`,fmt(c.dfArea,3),fmt(c.d.avg),fmt(c.dfArea&&c.d.avg!==null?c.dfArea*c.d.avg:null)]],[160,110,135,135]);
+ paragraph('Supply limits (FPM)',`${v(r.dfMin)} - ${v(r.dfMax)}`);paragraph('Supply readings (FPM)',r.dfReadings);}
  heading('Site assessment');table(['Check','Result / observation'],['Sash Alarm','Exhaust Alarm','Exhaust System Interlock','Supply Alarm'].map((n,i)=>[n,v(r['site'+i])]),[220,320]);
  paragraph('Comments / conditions',r.notes);paragraph('Corrective actions / limitations',r.corrective);
  if(r.challengeEnabled==='Yes'){let a=challengeValues(r);paragraph('Calculated aerosol challenge',`(13,500 x ${r.nozzles}) / ${fmt(a.q,2)} CFM = ${fmt(a.value,2)} ug/L. Q source: ${r.challengeQMode}. Calculated, not a measured upstream concentration.`);}
