@@ -24,6 +24,9 @@ render=function(){if(isFumeHood(report())&&tab>=0&&tab<=3)tab=6;beforeFumeRender
  $('#fumeNew').onclick=()=>{const h=newFumeHood();data.unshift(h);current=h.id;save();render();};
  $('#fumePhoto').onclick=()=>{const existing=new Set(data.filter(isFumeHood).map(h=>(h.asset||'')+'|'+h.date));const added=photoFumeHoods().filter(h=>!existing.has(h.asset+'|'+h.date));if(!added.length)return toast('These five hoods are already in this workspace.');data.unshift(...added);current=added[0].id;save();render();toast('Added '+added.length+' hoods. Review make, model and serial details; unclear entries were left blank.');};
  if(!isFumeHood(r))return;
+ const approval=document.createElement('section');approval.id='fumeApproval';approval.innerHTML=`<h2>Signature and approval</h2><p class="hint">I certify that this record is a true and accurate representation of the work performed.</p><div class="grid">${field('Performed by / technician','tech')}<label>Signature image<input id="fumeSignature" type="file" accept="image/png,image/jpeg,image/webp"></label></div>${signatureData(r.signatureImage)?`<div class="signature-preview"><img src="${r.signatureImage}" alt="Technician signature"></div><button id="fumeRemoveSignature">Remove signature</button>`:'<p class="hint" style="margin-top:16px">Upload a dark signature on a light background. Without an image, the PDF includes a blank signature line.</p>'}<button id="fumeSignedPdf" class="primary" style="margin-left:8px">Download report PDF</button>`;$('#editor').append(approval);
+ $('#fumeSignature').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const input=e.target;input.disabled=true;try{const value=await importSignature(file);r.signatureImage=value;save();render();toast('Signature saved to this report.');}catch(error){toast(error.message);input.disabled=false;input.value='';}};
+ if($('#fumeRemoveSignature'))$('#fumeRemoveSignature').onclick=()=>{delete r.signatureImage;save();render();};$('#fumeSignedPdf').onclick=()=>downloadFumeHoodPdf(r);
  const update=()=>{const v=fumeValues(r);$('#fumeSummary').innerHTML=`<div><strong>${fmt(v.area,3)} ft²</strong><span>Opening area</span></div><div><strong>${fmt(v.average,1)} FPM</strong><span>Average · ${v.count} readings</span></div><div><strong>${fmt(v.cfm,1)} CFM</strong><span>Calculated air volume</span></div>`;$('#fumeError').textContent=v.valid?'':'Enter nonnegative numeric readings separated by commas, spaces or new lines.';};
  $('#editor').querySelectorAll('[data-k]').forEach(el=>el.oninput=()=>{r[el.dataset.k]=el.value;save();update();});$('#fumePdf').onclick=()=>downloadFumeHoodPdf(r);update();
 };
@@ -34,9 +37,26 @@ async function buildFumeHoodPdf(r){
  const clean=s=>pdfSafe(String(s??''));
  const lines=(value,width,size)=>{const out=[];let line='';for(let word of clean(value).split(/\s+/)){while(font.widthOfTextAtSize(word,size)>width){let part='';for(const char of word){if(font.widthOfTextAtSize(part+char,size)>width)break;part+=char;}if(line){out.push(line);line='';}out.push(part);word=word.slice(part.length);}if(font.widthOfTextAtSize((line?line+' ':'')+word,size)>width){out.push(line);line=word;}else line+=(line?' ':'')+word;}if(line)out.push(line);return out.length?out:['-'];};
  const text=(value,x,top,size=11,strong=false)=>page.drawText(clean(value),{x,y:top-size,size,font:strong?bold:font,color:rgb(0,0,0)});
- text('Fume Hood Test Report',48,y,20,true);y-=46;
- const row=(label,value)=>{const wrapped=lines(value||'—',325,11),h=Math.max(36,wrapped.length*15+16);if(y-h<48)fresh();page.drawRectangle({x:48,y:y-h,width:516,height:h,borderWidth:0.6,borderColor:rgb(0,0,0)});text(label,58,y-10,10,true);wrapped.forEach((s,i)=>text(s,225,y-10-i*15,11));y-=h;};
- for(const [label,value] of [['Hood ID / location',r.asset],['Make',r.manufacturer],['Model',r.model],['Serial number',r.serial],['Test date',r.date],['Due date',r.due],['Opening width',r.width+' in'],['Sash opening height',r.sash+' in'],['Opening area',fmt(v.area,3)+' ft²'],['Readings (FPM)',r.inReadings],['Average face velocity',fmt(v.average,1)+' FPM'],['Air volume',fmt(v.cfm,1)+' CFM'],['Smoke test',r.fumeSmoke||'Not tested']])row(label,value);
+ const rule=top=>page.drawLine({start:{x:48,y:top},end:{x:564,y:top},thickness:0.7,color:rgb(0,0,0)});
+ const need=h=>{if(y-h<48)fresh();};
+ const heading=label=>{need(32);text(label,48,y,10,true);y-=20;};
+ const date=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.slice(5,7)+'/'+value.slice(8,10)+'/'+value.slice(0,4):value||'—';
+ const table=(rows,widths)=>{for(const cells of rows){const wrapped=cells.map((c,i)=>lines(c,widths[i]-20,10)),h=Math.max(34,...wrapped.map(a=>a.length*14+16));if(h>680)throw Error('A report field is too long. Shorten it before exporting.');need(h);let x=48;for(let i=0;i<cells.length;i++){page.drawRectangle({x,y:y-h,width:widths[i],height:h,borderWidth:0.5,borderColor:rgb(0,0,0)});wrapped[i].forEach((s,j)=>text(s,x+10,y-8-j*14,10));x+=widths[i];}y-=h;}y-=18;};
+ text('FUME HOOD',48,y,22,true);text('TEST REPORT',48,y-28,11,true);y-=56;rule(y);y-=22;
+ heading('01   HOOD IDENTIFICATION');
+ table([['Hood ID / location',r.asset||'—','Test date',date(r.date)],['Make',r.manufacturer||'—','Due date',date(r.due)],['Model',r.model||'—','Serial number',r.serial||'—']],[111,147,98,160]);
+ heading('02   AIRFLOW RESULTS');
+ table([['Opening width','Sash opening height','Opening area'],[r.width+' in',r.sash+' in',fmt(v.area,3)+' sq ft']],[172,172,172]);
+ need(66);const top=y;for(const [i,label,value] of [[0,'AVERAGE FACE VELOCITY',fmt(v.average,1)+' FPM'],[1,'CALCULATED AIR VOLUME',fmt(v.cfm,1)+' CFM'],[2,'SMOKE TEST',r.fumeSmoke||'Not tested']]){const x=48+i*172;text(label,x+10,top,8,true);text(value,x+10,top-19,17,true);}y-=59;rule(y);y-=22;
+ heading('03   FACE VELOCITY READINGS (FPM)');
+ const readings=lines(r.inReadings,496,10);for(const line of readings){need(15);text(line,58,y,10);y-=15;}y-=18;
+ const statement='I certify that this record is a true and accurate representation of the work performed.';
+ need(176);y=Math.min(y,224);rule(y);y-=18;heading('CERTIFICATION AND SIGNATURE');
+ for(const line of lines(statement,516,10)){text(line,48,y,10);y-=14;}y-=12;
+ const nameLines=lines(r.tech||'________________________________',260,11);for(const line of nameLines){text(line,48,y,11,true);y-=14;}text('Performed by / technician',48,y-3,8);const signatureTop=y+nameLines.length*14;
+ if(signatureData(r.signatureImage)){const image=await doc.embedPng(r.signatureImage),scale=Math.min(220/image.width,48/image.height);page.drawImage(image,{x:330,y:signatureTop-42,width:image.width*scale,height:image.height*scale});}
+ page.drawLine({start:{x:330,y:signatureTop-46},end:{x:564,y:signatureTop-46},thickness:0.5,color:rgb(0,0,0)});text('Signature',330,signatureTop-52,8);
+ const pages=doc.getPages();for(let i=0;i<pages.length;i++)pages[i].drawText('Page '+(i+1)+' of '+pages.length,{x:510,y:24,size:8,font,color:rgb(0,0,0)});
  doc.setTitle('Fume Hood Test Report - '+(r.asset||''));return doc.save();
 }
 async function downloadFumeHoodPdf(r){try{const bytes=await buildFumeHoodPdf(r),url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),a=document.createElement('a');a.href=url;a.download=('Fume-Hood-'+(r.asset||'report')+'-'+(r.date||'undated')).replace(/[^a-zA-Z0-9_-]/g,'_')+'.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);toast('Fume hood PDF downloaded.');}catch(e){toast(e.message);}}
